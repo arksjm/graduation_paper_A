@@ -1,0 +1,93 @@
+---
+- name: Создание директории для мониторинга
+  file:
+    path: /opt/monitoring
+    state: directory
+    mode: '0755'
+
+- name: Создание конфигурации Prometheus
+  copy:
+    dest: /opt/monitoring/prometheus.yml
+    content: |
+      global:
+        scrape_interval: 15s
+
+      scrape_configs:
+        - job_name: 'node_exporter'
+          static_configs:
+            - targets:
+                - '192.168.56.10:9100'
+                - '192.168.56.12:9100'
+
+        - job_name: 'app'
+          static_configs:
+            - targets:
+                - '192.168.56.10:8080'
+
+- name: Установка Node Exporter на monitoring
+  shell: |
+    wget https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz
+    tar xvf node_exporter-1.7.0.linux-amd64.tar.gz
+    mv node_exporter-1.7.0.linux-amd64/node_exporter /usr/local/bin/
+    rm -rf node_exporter-1.7.0.linux-amd64*
+  args:
+    creates: /usr/local/bin/node_exporter
+
+- name: Создание systemd сервиса для Node Exporter
+  copy:
+    dest: /etc/systemd/system/node_exporter.service
+    content: |
+      [Unit]
+      Description=Node Exporter
+      After=network.target
+
+      [Service]
+      User=root
+      ExecStart=/usr/local/bin/node_exporter
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Запуск Node Exporter
+  systemd:
+    name: node_exporter
+    state: started
+    enabled: yes
+    daemon_reload: yes
+
+- name: Создание docker-compose для мониторинга
+  copy:
+    dest: /opt/monitoring/docker-compose.yml
+    content: |
+      services:
+        prometheus:
+          image: prom/prometheus:latest
+          container_name: prometheus
+          restart: always
+          volumes:
+            - ./prometheus.yml:/etc/prometheus/prometheus.yml
+            - prometheus_data:/prometheus
+          ports:
+            - "9090:9090"
+
+        grafana:
+          image: grafana/grafana:latest
+          container_name: grafana
+          restart: always
+          environment:
+            GF_SECURITY_ADMIN_PASSWORD: admin
+          ports:
+            - "3000:3000"
+          volumes:
+            - grafana_data:/var/lib/grafana
+
+      volumes:
+        prometheus_data:
+        grafana_data:
+
+- name: Запуск мониторинга
+  shell: |
+    cd /opt/monitoring
+    docker compose up -d
+  args:
+    executable: /bin/bash

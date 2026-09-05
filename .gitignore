@@ -1,0 +1,24 @@
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars
+!terraform.tfvars.example
+.terraform.lock.hcl
+
+# Ansible
+ansible/inventory/hosts.yml
+
+# Vagrant
+.vagrant/
+
+# Образы и ISO
+*.iso
+*.vmdk
+*.vdi
+*.box
+
+# Временные файлы
+*.log
+*.tmp
+.DS_Store

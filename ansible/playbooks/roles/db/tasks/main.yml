@@ -1,0 +1,36 @@
+---
+- name: Создание директории для PostgreSQL
+  file:
+    path: /opt/postgres
+    state: directory
+    mode: '0755'
+
+- name: Создание docker-compose для PostgreSQL
+  copy:
+    dest: /opt/postgres/docker-compose.yml
+    content: |
+      version: '3.8'
+      
+      services:
+        postgres:
+          image: postgres:16
+          container_name: postgres_db
+          restart: always
+          environment:
+            POSTGRES_DB: graduation_db
+            POSTGRES_USER: graduation_user
+            POSTGRES_PASSWORD: graduation_pass
+          ports:
+            - "5432:5432"
+          volumes:
+            - postgres_data:/var/lib/postgresql/data
+      
+      volumes:
+        postgres_data:
+
+- name: Запуск PostgreSQL
+  shell: |
+    cd /opt/postgres
+    docker compose up -d
+  args:
+    executable: /bin/bash

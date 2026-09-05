@@ -1,0 +1,33 @@
+---
+- name: Создание директории для приложения
+  file:
+    path: /opt/app
+    state: directory
+    mode: '0755'
+
+- name: Клонирование репозитория
+  git:
+    repo: https://github.com/arksjm/graduation_paper_B.git
+    dest: /opt/app/repo
+    version: main
+    force: yes
+
+- name: Запуск приложения через docker compose
+  shell: |
+    cd /opt/app/repo
+    docker compose up -d --build
+  args:
+    executable: /bin/bash
+  register: compose_result
+
+- name: Вывод результата запуска
+  debug:
+    var: compose_result.stdout_lines
+
+- name: Проверка статуса контейнеров
+  command: docker ps
+  register: container_status
+
+- name: Вывод статуса контейнеров
+  debug:
+    var: container_status.stdout_lines
