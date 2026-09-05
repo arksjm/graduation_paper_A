@@ -14,9 +14,11 @@
 *.box
 *.qcow2
 *.raw
+*.tar.gz
 
 # Директории с образами
-infra/terraform/images/
+infra/terraform/images/*
+!infra/terraform/images/README.md
 infra/terraform/cloud-init/
 
 # Ansible
@@ -31,3 +33,9 @@ ansible/inventory/hosts.yml
 tmp/
 *.log
 .DS_Store
+
+# Go
+*.exe
+*.test
+*.out
+web-go-prg
