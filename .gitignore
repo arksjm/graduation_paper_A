@@ -22,3 +22,11 @@ ansible/inventory/hosts.yml
 *.log
 *.tmp
 .DS_Store
+
+# Образы виртуальных машин
+*.vmdk
+*.vdi
+*.img
+*.box
+*.iso
+infra/terraform/images/
