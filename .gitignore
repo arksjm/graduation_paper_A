@@ -6,27 +6,28 @@
 !terraform.tfvars.example
 .terraform.lock.hcl
 
+# Большие файлы и образы
+*.iso
+*.img
+*.vmdk
+*.vdi
+*.box
+*.qcow2
+*.raw
+
+# Директории с образами
+infra/terraform/images/
+infra/terraform/cloud-init/
+
 # Ansible
 ansible/inventory/hosts.yml
 
-# Vagrant
-.vagrant/
-
-# Образы и ISO
-*.iso
-*.vmdk
-*.vdi
-*.box
+# SSH
+.ssh/
+*.pem
+*.key
 
 # Временные файлы
+tmp/
 *.log
-*.tmp
 .DS_Store
-
-# Образы виртуальных машин
-*.vmdk
-*.vdi
-*.img
-*.box
-*.iso
-infra/terraform/images/
