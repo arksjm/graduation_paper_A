@@ -1,0 +1,6 @@
+# Игнорировать все файлы
+*
+
+# Кроме README и .gitignore
+!README.md
+!.gitignore

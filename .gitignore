@@ -19,6 +19,7 @@
 # Директории с образами
 infra/terraform/images/*
 !infra/terraform/images/README.md
+!infra/terraform/images/.gitignore
 infra/terraform/cloud-init/
 
 # Ansible
