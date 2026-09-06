@@ -13,7 +13,7 @@ pipeline {
         stage('Build') {
             steps {
                 echo "Сборка Docker образа..."
-                sh 'docker build -t graduation-app:latest .'
+                sh 'cd app && docker build -t graduation-app:latest .'
             }
         }
 
@@ -21,19 +21,14 @@ pipeline {
             steps {
                 echo "Деплой на app-сервер..."
                 sh '''
-                    # Сохраняем образ
-                    docker save graduation-app:latest | gzip > /tmp/graduation-app.tar.gz
+                    # Исправляем права
+                    ssh -o StrictHostKeyChecking=no vagrant@192.168.56.10 "sudo mkdir -p /opt/app && sudo chown -R vagrant:vagrant /opt/app"
                     
-                    # Копируем на ВМ
-                    scp -o StrictHostKeyChecking=no /tmp/graduation-app.tar.gz vagrant@192.168.56.10:/tmp/
+                    # Копируем файлы
+                    scp -o StrictHostKeyChecking=no -r app/* vagrant@192.168.56.10:/opt/app/
                     
-                    # Загружаем образ на ВМ
-                    ssh -o StrictHostKeyChecking=no vagrant@192.168.56.10 "docker load < /tmp/graduation-app.tar.gz"
-                    
-                    # Перезапускаем контейнер
-                    ssh -o StrictHostKeyChecking=no vagrant@192.168.56.10 "docker stop graduation_app 2>/dev/null || true"
-                    ssh -o StrictHostKeyChecking=no vagrant@192.168.56.10 "docker rm graduation_app 2>/dev/null || true"
-                    ssh -o StrictHostKeyChecking=no vagrant@192.168.56.10 "docker run -d --name graduation_app -p 80:8080 --restart always graduation-app:latest"
+                    # Запускаем docker compose
+                    ssh -o StrictHostKeyChecking=no vagrant@192.168.56.10 "cd /opt/app && docker compose up -d --build"
                 '''
             }
         }
@@ -42,8 +37,8 @@ pipeline {
             steps {
                 echo "Проверка приложения..."
                 sh '''
-                    sleep 5
-                    curl -f http://192.168.56.10:8080 || echo "Приложение недоступно"
+                    sleep 15
+                    curl -f http://192.168.56.10:8080 && echo "✅ Приложение работает" || echo "❌ Приложение недоступно"
                 '''
             }
         }
