@@ -1,9 +1,20 @@
-FROM golang:1.22-alpine AS builder
+FROM golang:1.25-alpine AS builder
 WORKDIR /app
+
+# Копируем go.mod и go.sum
 COPY go.mod go.sum ./
+
+# Устанавливаем GOTOOLCHAIN=auto
+ENV GOTOOLCHAIN=auto
+
+# Скачиваем зависимости
 RUN go mod download
+
+# Копируем весь код
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o main .
+
+# Собираем приложение
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o main .
 
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates
