@@ -18,7 +18,9 @@
     content: |
       services:
         app:
-          build: ./repo
+          build:
+            context: ./repo
+            dockerfile: Dockerfile
           container_name: graduation_app
           restart: always
           ports:
