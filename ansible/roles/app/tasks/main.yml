@@ -19,7 +19,7 @@
       services:
         app:
           build:
-            context: ./repo
+            context: ./repo/app
             dockerfile: Dockerfile
           container_name: graduation_app
           restart: always
@@ -28,9 +28,10 @@
           environment:
             DB_HOST: 192.168.56.11
             DB_PORT: 5432
-            DB_NAME: graduation_db
             DB_USER: graduation_user
             DB_PASSWORD: graduation_pass
+            DB_NAME: graduation_db
+            DATABASE_URL: postgres://graduation_user:graduation_pass@192.168.56.11:5432/graduation_db?sslmode=disable
 
 - name: Запуск приложения
   shell: |
@@ -40,7 +41,7 @@
     executable: /bin/bash
 
 - name: Проверка контейнеров
-  shell: docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+  shell: docker ps
   register: containers
 
 - name: Вывод статуса
