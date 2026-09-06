@@ -1,0 +1,46 @@
+---
+- name: Создание директории для приложения
+  file:
+    path: /opt/app
+    state: directory
+    mode: '0755'
+
+- name: Клонирование репозитория
+  git:
+    repo: https://github.com/arksjm/graduation_paper_A.git
+    dest: /opt/app/repo
+    version: main
+    force: yes
+
+- name: Создание docker-compose.yml
+  copy:
+    dest: /opt/app/docker-compose.yml
+    content: |
+      services:
+        app:
+          build: ./repo
+          container_name: graduation_app
+          restart: always
+          ports:
+            - "80:8080"
+          environment:
+            DB_HOST: 192.168.56.11
+            DB_PORT: 5432
+            DB_NAME: graduation_db
+            DB_USER: graduation_user
+            DB_PASSWORD: graduation_pass
+
+- name: Запуск приложения
+  shell: |
+    cd /opt/app
+    docker compose up -d --build
+  args:
+    executable: /bin/bash
+
+- name: Проверка контейнеров
+  shell: docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+  register: containers
+
+- name: Вывод статуса
+  debug:
+    var: containers.stdout_lines

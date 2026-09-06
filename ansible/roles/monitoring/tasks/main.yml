@@ -1,0 +1,179 @@
+---
+- name: Создание директории для мониторинга
+  file:
+    path: /opt/monitoring
+    state: directory
+    mode: '0755'
+
+- name: Создание конфигурации Prometheus
+  copy:
+    dest: /opt/monitoring/prometheus.yml
+    content: |
+      global:
+        scrape_interval: 15s
+        evaluation_interval: 15s
+
+      # Правила алертов
+      rule_files:
+        - 'alerts.yml'
+
+      scrape_configs:
+        # Мониторинг самого Prometheus
+        - job_name: 'prometheus'
+          static_configs:
+            - targets: ['localhost:9090']
+
+        # Мониторинг всех ВМ через Node Exporter
+        - job_name: 'node_exporter'
+          static_configs:
+            - targets:
+                - '192.168.56.10:9100'  # app
+                - '192.168.56.11:9100'  # db
+                - '192.168.56.12:9100'  # monitoring
+
+        # Мониторинг приложения
+        - job_name: 'app'
+          metrics_path: '/health'
+          static_configs:
+            - targets:
+                - '192.168.56.10:8080'
+
+        # Проверка доступности приложения
+        - job_name: 'blackbox'
+          metrics_path: /probe
+          params:
+            module: [http_2xx]
+          static_configs:
+            - targets:
+                - http://192.168.56.10
+                - http://192.168.56.10/health
+          relabel_configs:
+            - source_labels: [__address__]
+              target_label: __param_target
+            - source_labels: [__param_target]
+              target_label: instance
+            - target_label: __address__
+              replacement: localhost:9115
+
+- name: Создание правил алертов
+  copy:
+    dest: /opt/monitoring/alerts.yml
+    content: |
+      groups:
+        - name: infrastructure_alerts
+          rules:
+            # Алерт: ВМ недоступна
+            - alert: HostDown
+              expr: up == 0
+              for: 1m
+              labels:
+                severity: critical
+              annotations:
+                summary: "Хост {{ $labels.instance }} недоступен"
+                description: "Хост {{ $labels.instance }} не отвечает более 1 минуты"
+
+            # Алерт: Высокая загрузка CPU
+            - alert: HighCPUUsage
+              expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+              for: 5m
+              labels:
+                severity: warning
+              annotations:
+                summary: "Высокая загрузка CPU на {{ $labels.instance }}"
+                description: "CPU используется на {{ $value }}% более 5 минут"
+
+            # Алерт: Мало свободной памяти
+            - alert: LowMemory
+              expr: (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 < 10
+              for: 5m
+              labels:
+                severity: warning
+              annotations:
+                summary: "Мало памяти на {{ $labels.instance }}"
+                description: "Доступно только {{ $value }}% памяти"
+
+        - name: application_alerts
+          rules:
+            # Алерт: Приложение недоступно
+            - alert: AppDown
+              expr: probe_success{job="blackbox"} == 0
+              for: 2m
+              labels:
+                severity: critical
+              annotations:
+                summary: "Приложение {{ $labels.instance }} недоступно"
+                description: "Приложение не отвечает более 2 минут"
+
+- name: Создание конфигурации Blackbox Exporter
+  copy:
+    dest: /opt/monitoring/blackbox.yml
+    content: |
+      modules:
+        http_2xx:
+          prober: http
+          timeout: 5s
+          http:
+            valid_status_codes: [200, 301, 302]
+            method: GET
+
+- name: Создание docker-compose для мониторинга
+  copy:
+    dest: /opt/monitoring/docker-compose.yml
+    content: |
+      services:
+        prometheus:
+          image: prom/prometheus:latest
+          container_name: prometheus
+          restart: always
+          volumes:
+            - ./prometheus.yml:/etc/prometheus/prometheus.yml
+            - ./alerts.yml:/etc/prometheus/alerts.yml
+            - prometheus_data:/prometheus
+          command:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+            - '--storage.tsdb.path=/prometheus'
+            - '--web.enable-lifecycle'
+          ports:
+            - "9090:9090"
+
+        grafana:
+          image: grafana/grafana:latest
+          container_name: grafana
+          restart: always
+          environment:
+            GF_SECURITY_ADMIN_USER: admin
+            GF_SECURITY_ADMIN_PASSWORD: admin
+          ports:
+            - "3000:3000"
+          volumes:
+            - grafana_data:/var/lib/grafana
+          depends_on:
+            - prometheus
+
+        blackbox_exporter:
+          image: prom/blackbox-exporter:latest
+          container_name: blackbox_exporter
+          restart: always
+          ports:
+            - "9115:9115"
+          volumes:
+            - ./blackbox.yml:/etc/blackbox_exporter/config.yml
+          command:
+            - '--config.file=/etc/blackbox_exporter/config.yml'
+
+      volumes:
+        prometheus_data:
+        grafana_data:
+
+- name: Запуск мониторинга
+  shell: |
+    cd /opt/monitoring
+    docker compose up -d
+  args:
+    executable: /bin/bash
+
+- name: Ожидание запуска Prometheus
+  wait_for:
+    port: 9090
+    host: localhost
+    timeout: 60
