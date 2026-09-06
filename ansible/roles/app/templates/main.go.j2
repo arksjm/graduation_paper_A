@@ -1,0 +1,44 @@
+package main
+
+import (
+    "encoding/json"
+    "log"
+    "net/http"
+    "time"
+)
+
+// HealthResponse - структура для ответа health-check
+type HealthResponse struct {
+    Status    string    `json:"status"`
+    Service   string    `json:"service"`
+    Timestamp time.Time `json:"timestamp"`
+    Uptime    string    `json:"uptime"`
+}
+
+var startTime = time.Now()
+
+// healthHandler - обработчик для проверки здоровья приложения
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+    response := HealthResponse{
+        Status:    "ok",
+        Service:   "{{ app_name }}",
+        Timestamp: time.Now(),
+        Uptime:    time.Since(startTime).String(),
+    }
+    
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(response)
+}
+
+func main() {
+    // Регистрация health-endpoint
+    http.HandleFunc("/health", healthHandler)
+    
+    // Запуск сервера
+    port := ":{{ app_port }}"
+    log.Printf("Server starting on %s", port)
+    if err := http.ListenAndServe(port, nil); err != nil {
+        log.Fatal(err)
+    }
+}

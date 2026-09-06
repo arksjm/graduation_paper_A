@@ -1,0 +1,7 @@
+---
+- name: restart_app
+  shell: |
+    cd /opt/app
+    docker compose restart
+  args:
+    executable: /bin/bash

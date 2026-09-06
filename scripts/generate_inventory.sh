@@ -21,6 +21,16 @@ all:
       ansible_user: vagrant
       ansible_ssh_private_key_file: ~/.ssh/id_ed25519
       ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+  children:
+    app_group:
+      hosts:
+        app:
+    db_group:
+      hosts:
+        db:
+    monitoring_group:
+      hosts:
+        monitoring:
 INVENTORY
 
 echo "Inventory создан в ansible/inventory/hosts.yml"

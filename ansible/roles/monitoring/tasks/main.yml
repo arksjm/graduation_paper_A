@@ -12,33 +12,29 @@
       global:
         scrape_interval: 15s
         evaluation_interval: 15s
+        external_labels:
+          monitor: 'graduation-monitor'
 
-      # Правила алертов
       rule_files:
         - 'alerts.yml'
 
       scrape_configs:
-        # Мониторинг самого Prometheus
         - job_name: 'prometheus'
           static_configs:
             - targets: ['localhost:9090']
 
-        # Мониторинг всех ВМ через Node Exporter
         - job_name: 'node_exporter'
           static_configs:
             - targets:
-                - '192.168.56.10:9100'  # app
-                - '192.168.56.11:9100'  # db
-                - '192.168.56.12:9100'  # monitoring
+                - '192.168.56.10:9100'
+                - '192.168.56.11:9100'
+                - '192.168.56.12:9100'
 
-        # Мониторинг приложения
-        - job_name: 'app'
+        - job_name: 'go_app'
           metrics_path: '/health'
           static_configs:
-            - targets:
-                - '192.168.56.10:8080'
+            - targets: ['192.168.56.10:8080']
 
-        # Проверка доступности приложения
         - job_name: 'blackbox'
           metrics_path: /probe
           params:
@@ -58,51 +54,7 @@
 - name: Создание правил алертов
   copy:
     dest: /opt/monitoring/alerts.yml
-    content: |
-      groups:
-        - name: infrastructure_alerts
-          rules:
-            # Алерт: ВМ недоступна
-            - alert: HostDown
-              expr: up == 0
-              for: 1m
-              labels:
-                severity: critical
-              annotations:
-                summary: "Хост {{ $labels.instance }} недоступен"
-                description: "Хост {{ $labels.instance }} не отвечает более 1 минуты"
-
-            # Алерт: Высокая загрузка CPU
-            - alert: HighCPUUsage
-              expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
-              for: 5m
-              labels:
-                severity: warning
-              annotations:
-                summary: "Высокая загрузка CPU на {{ $labels.instance }}"
-                description: "CPU используется на {{ $value }}% более 5 минут"
-
-            # Алерт: Мало свободной памяти
-            - alert: LowMemory
-              expr: (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 < 10
-              for: 5m
-              labels:
-                severity: warning
-              annotations:
-                summary: "Мало памяти на {{ $labels.instance }}"
-                description: "Доступно только {{ $value }}% памяти"
-
-        - name: application_alerts
-          rules:
-            # Алерт: Приложение недоступно
-            - alert: AppDown
-              expr: probe_success{job="blackbox"} == 0
-              for: 2m
-              labels:
-                severity: critical
-              annotations:
-                summary: "Приложение {{ $labels.instance }} недоступно"
-                description: "Приложение не отвечает более 2 минут"
+    src: alerts.yml
 
 - name: Создание конфигурации Blackbox Exporter
   copy:

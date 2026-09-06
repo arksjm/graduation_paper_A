@@ -5,17 +5,17 @@
   roles:
     - common
 
-- name: Настройка приложения
-  hosts: app
-  become: yes
-  roles:
-    - app
-
 - name: Настройка базы данных
   hosts: db
   become: yes
   roles:
     - db
+
+- name: Настройка приложения
+  hosts: app
+  become: yes
+  roles:
+    - app
 
 - name: Настройка мониторинга
   hosts: monitoring

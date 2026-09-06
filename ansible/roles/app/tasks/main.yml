@@ -12,7 +12,51 @@
     version: main
     force: yes
 
-- name: Создание docker-compose.yml
+- name: Удаление старого health.go
+  file:
+    path: /opt/app/repo/app/health.go
+    state: absent
+
+- name: Создание health.go файла
+  copy:
+    dest: /opt/app/repo/app/health.go
+    content: |
+      package main
+
+      import (
+          "encoding/json"
+          "net/http"
+          "time"
+      )
+
+      type HealthResponse struct {
+          Status    string    `json:"status"`
+          Service   string    `json:"service"`
+          Timestamp time.Time `json:"timestamp"`
+          Uptime    string    `json:"uptime"`
+      }
+
+      var healthStartTime = time.Now()
+
+      func healthHandler(w http.ResponseWriter, r *http.Request) {
+          response := HealthResponse{
+              Status:    "ok",
+              Service:   "graduation-app",
+              Timestamp: time.Now(),
+              Uptime:    time.Since(healthStartTime).String(),
+          }
+          
+          w.Header().Set("Content-Type", "application/json")
+          w.WriteHeader(http.StatusOK)
+          json.NewEncoder(w).Encode(response)
+      }
+
+      func init() {
+          http.HandleFunc("/health", healthHandler)
+      }
+    mode: '0644'
+
+- name: Создание docker-compose.yml с пробросом портов
   copy:
     dest: /opt/app/docker-compose.yml
     content: |
@@ -25,6 +69,7 @@
           restart: always
           ports:
             - "80:8080"
+            - "8080:8080"
           environment:
             DB_HOST: 192.168.56.11
             DB_PORT: 5432
@@ -33,17 +78,63 @@
             DB_NAME: graduation_db
             DATABASE_URL: postgres://graduation_user:graduation_pass@192.168.56.11:5432/graduation_db?sslmode=disable
 
+- name: Очистка Docker кэша
+  shell: |
+    cd /opt/app
+    docker compose down 2>/dev/null || true
+    docker builder prune -f
+  args:
+    executable: /bin/bash
+  ignore_errors: yes
+
 - name: Запуск приложения
   shell: |
     cd /opt/app
-    docker compose up -d --build
+    docker compose build --no-cache
+    docker compose up -d
   args:
     executable: /bin/bash
 
-- name: Проверка контейнеров
-  shell: docker ps
-  register: containers
+- name: Пауза для запуска
+  pause:
+    seconds: 15
 
-- name: Вывод статуса
+- name: Проверка портов
+  shell: docker port graduation_app
+  register: ports
+
+- name: Вывод портов
   debug:
-    var: containers.stdout_lines
+    var: ports.stdout_lines
+
+- name: Проверка health-endpoint на порту 80
+  uri:
+    url: "http://localhost/health"
+    method: GET
+    status_code: 200
+    return_content: yes
+  register: health_80
+  retries: 3
+  delay: 5
+  until: health_80.status == 200
+  ignore_errors: yes
+
+- name: Проверка health-endpoint на порту 8080
+  uri:
+    url: "http://localhost:8080/health"
+    method: GET
+    status_code: 200
+    return_content: yes
+  register: health_8080
+  retries: 3
+  delay: 5
+  until: health_8080.status == 200
+  ignore_errors: yes
+
+- name: Вывод результата (порт 80)
+  debug:
+    msg: "Порт 80: {{ health_80.content if health_80.status == 200 else 'Не работает' }}"
+
+- name: Вывод результата (порт 8080)
+  debug:
+    msg: "Порт 8080: {{ health_8080.content if health_8080.status == 200 else 'Не работает' }}"

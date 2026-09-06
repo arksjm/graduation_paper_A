@@ -1,0 +1,6 @@
+---
+app_name: "graduation-app"
+app_port: "8080"
+app_repo: "https://github.com/YOUR_USERNAME/graduation_paper_B.git"
+app_directory: "/opt/app"
+app_branch: "main"

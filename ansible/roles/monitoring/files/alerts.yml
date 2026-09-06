@@ -1,0 +1,58 @@
+groups:
+  - name: infrastructure_alerts
+    rules:
+      - alert: HostDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Хост {{ $labels.instance }} недоступен"
+          description: "Хост {{ $labels.instance }} не отвечает более 1 минуты"
+
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокая загрузка CPU на {{ $labels.instance }}"
+          description: "CPU используется на {{ $value }}% более 5 минут"
+
+      - alert: LowMemory
+        expr: (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 < 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Мало памяти на {{ $labels.instance }}"
+          description: "Доступно только {{ $value }}% памяти"
+
+      - alert: LowDiskSpace
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Мало места на диске {{ $labels.instance }}"
+          description: "Доступно только {{ $value }}% дискового пространства"
+
+  - name: application_alerts
+    rules:
+      - alert: AppDown
+        expr: probe_success{job="blackbox"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Приложение {{ $labels.instance }} недоступно"
+          description: "Приложение не отвечает более 2 минут"
+
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокий процент ошибок в приложении"
+          description: "Более 10% запросов завершаются с ошибкой"
