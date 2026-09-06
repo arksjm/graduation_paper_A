@@ -14,7 +14,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 git branch: 'main',
-                    url: 'https://github.com/arksjm/graduation_paper_B.git',
+                    url: 'https://github.com/arksjm/graduation_paper_A.git',
                     credentialsId: 'jenkins'
                 echo "Код получен"
             }
