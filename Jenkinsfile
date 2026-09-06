@@ -13,7 +13,7 @@ pipeline {
         stage('Build') {
             steps {
                 echo "Сборка Docker образа..."
-                sh 'cd app && docker compose build'
+                sh 'docker build -t graduation-app:latest .'
             }
         }
 
@@ -21,16 +21,19 @@ pipeline {
             steps {
                 echo "Деплой на app-сервер..."
                 sh '''
-                    # Копируем docker-compose.yml и nginx конфиг на ВМ
-                    ssh -o StrictHostKeyChecking=no vagrant@192.168.56.10 "mkdir -p /opt/app/nginx"
-                    scp -o StrictHostKeyChecking=no app/docker-compose.yml vagrant@192.168.56.10:/opt/app/
-                    scp -o StrictHostKeyChecking=no -r app/nginx/* vagrant@192.168.56.10:/opt/app/nginx/
+                    # Сохраняем образ
+                    docker save graduation-app:latest | gzip > /tmp/graduation-app.tar.gz
                     
-                    # Копируем исходный код
-                    scp -o StrictHostKeyChecking=no -r app/* vagrant@192.168.56.10:/opt/app/
+                    # Копируем на ВМ
+                    scp -o StrictHostKeyChecking=no /tmp/graduation-app.tar.gz vagrant@192.168.56.10:/tmp/
                     
-                    # Запускаем docker compose на ВМ
-                    ssh -o StrictHostKeyChecking=no vagrant@192.168.56.10 "cd /opt/app && docker compose up -d --build"
+                    # Загружаем образ на ВМ
+                    ssh -o StrictHostKeyChecking=no vagrant@192.168.56.10 "docker load < /tmp/graduation-app.tar.gz"
+                    
+                    # Перезапускаем контейнер
+                    ssh -o StrictHostKeyChecking=no vagrant@192.168.56.10 "docker stop graduation_app 2>/dev/null || true"
+                    ssh -o StrictHostKeyChecking=no vagrant@192.168.56.10 "docker rm graduation_app 2>/dev/null || true"
+                    ssh -o StrictHostKeyChecking=no vagrant@192.168.56.10 "docker run -d --name graduation_app -p 80:8080 --restart always graduation-app:latest"
                 '''
             }
         }
@@ -39,7 +42,7 @@ pipeline {
             steps {
                 echo "Проверка приложения..."
                 sh '''
-                    sleep 10
+                    sleep 5
                     curl -f http://192.168.56.10:8080 || echo "Приложение недоступно"
                 '''
             }
