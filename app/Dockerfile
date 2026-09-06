@@ -1,17 +1,15 @@
-# СБОРКА
-FROM golang:1.23-bookworm as builder
-WORKDIR /src
-ENV GOTOOLCHAIN=auto
-
+FROM golang:1.22-alpine AS builder
+WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /web-go-prg .
+RUN CGO_ENABLED=0 GOOS=linux go build -o main .
 
-# ==== Стадия 2: Запуск ====
-FROM gcr.io/distroless/static-debian12:nonroot 
-WORKDIR /app
-COPY --from=builder /web-go-prg  .
-COPY --from=builder /src/templates ./templates
-USER nonroot
-ENTRYPOINT ["/app/web-go-prg"]
+FROM alpine:latest
+RUN apk --no-cache add ca-certificates
+WORKDIR /root/
+COPY --from=builder /app/main .
+COPY --from=builder /app/templates ./templates
+COPY --from=builder /app/migrations ./migrations
+EXPOSE 8080
+CMD ["./main"]
