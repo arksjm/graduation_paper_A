@@ -46,10 +46,11 @@ pipeline {
         
         stage('Deploy via Ansible') {
             steps {
-                echo "Автоматический деплой через Ansible..."
+                echo "Автоматический деплой..."
                 script {
                     sh '''
-                        cd ansible
+                        # Используем полный путь к ansible
+                        cd /home/admiq/graduation_paper_B/ansible
                         ansible-playbook -i inventory/hosts.yml playbooks/site.yml --limit app
                     '''
                 }
