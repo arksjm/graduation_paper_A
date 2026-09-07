@@ -112,3 +112,10 @@ status:
 check:
 	@echo "=== Полная проверка системы ==="
 	@./scripts/check_all.sh 2>/dev/null || true
+
+# Пересоздание ВМ с полной настройкой
+recreate:
+	@echo "=== Пересоздание ВМ ==="
+	@make destroy
+	@sleep 10
+	@make bootstrap

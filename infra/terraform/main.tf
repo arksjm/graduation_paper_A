@@ -11,16 +11,13 @@ terraform {
 resource "null_resource" "ensure_network" {
   provisioner "local-exec" {
     command = <<-EOT
-      # Проверяем и создаем host-only сеть, если её нет
       if ! VBoxManage list hostonlyifs | grep -q "vboxnet0"; then
         VBoxManage hostonlyif create
         sleep 2
       fi
-      # Настраиваем IP сети
       VBoxManage hostonlyif ipconfig vboxnet0 --ip 192.168.56.1 --netmask 255.255.255.0
-      # Отключаем DHCP
       VBoxManage dhcpserver remove --ifname vboxnet0 2>/dev/null || true
-      echo "Host-only сеть vboxnet0 настроена"
+      echo "Host-only сеть настроена"
     EOT
   }
 }
@@ -31,24 +28,14 @@ resource "null_resource" "create_app_vm" {
   
   provisioner "local-exec" {
     command = <<-EOT
-      # Удаляем старую ВМ, если есть
       VBoxManage unregistervm "app" --delete 2>/dev/null || true
-      
-      # Создаем ВМ
       VBoxManage createvm --name "app" --register
       VBoxManage modifyvm "app" --memory 2048 --cpus 2 --ostype Ubuntu_64
-      
-      # Настраиваем сеть
       VBoxManage modifyvm "app" --nic1 nat
       VBoxManage modifyvm "app" --nic2 hostonly --hostonlyadapter2 vboxnet0
-      
-      # Подключаем диск
       VBoxManage storagectl "app" --name "SATA" --add sata --controller IntelAhci
       VBoxManage storageattach "app" --storagectl "SATA" --port 0 --device 0 --type hdd --medium "${var.image_path}"
-      
-      # Запускаем ВМ
       VBoxManage startvm "app" --type headless
-      
       echo "ВМ app создана и запущена"
     EOT
   }
@@ -92,27 +79,47 @@ resource "null_resource" "create_monitoring_vm" {
   }
 }
 
-# Настройка статических IP внутри ВМ (через VBoxManage guestcontrol)
-resource "null_resource" "configure_static_ips" {
+# Ожидание загрузки и настройка сети
+resource "null_resource" "setup_network" {
   depends_on = [null_resource.create_app_vm, null_resource.create_db_vm, null_resource.create_monitoring_vm]
   
   provisioner "local-exec" {
     command = <<-EOT
-      echo "Ожидание загрузки ВМ..."
-      sleep 60
+      echo "Ожидание загрузки ВМ (90 секунд)..."
+      sleep 90
       
-      echo "Настройка статических IP..."
+      # Настройка IP для каждой ВМ
+      for VM_IP in "app:192.168.56.10" "db:192.168.56.11" "monitoring:192.168.56.12"; do
+        NAME="${VM_IP%%:*}"
+        IP="${VM_IP##*:}"
+        
+        echo "Настройка $NAME ($IP)..."
+        VBoxManage guestcontrol "$NAME" run --exe /bin/bash --username vagrant --password vagrant --wait-stdout -- -c "
+          sudo ip addr add $IP/24 dev eth1 2>/dev/null || echo 'IP уже настроен'
+          sudo ip link set eth1 up
+        " 2>&1
+      done
       
-      # Для app (192.168.56.10)
-      VBoxManage guestcontrol "app" run --exe /bin/bash --username vagrant --password vagrant -- -c "sudo ip addr add 192.168.56.10/24 dev enp0s8 2>/dev/null || true" 2>/dev/null || true
+      echo "Сеть настроена"
+    EOT
+  }
+}
+
+# Запуск Ansible после создания ВМ
+resource "null_resource" "run_ansible" {
+  depends_on = [null_resource.setup_network]
+  
+  provisioner "local-exec" {
+    command = <<-EOT
+      echo "Генерация inventory..."
+      cd ~/graduation_paper_B/scripts
+      ./generate_inventory.sh
       
-      # Для db (192.168.56.11)
-      VBoxManage guestcontrol "db" run --exe /bin/bash --username vagrant --password vagrant -- -c "sudo ip addr add 192.168.56.11/24 dev enp0s8 2>/dev/null || true" 2>/dev/null || true
+      echo "Запуск Ansible..."
+      cd ~/graduation_paper_B/ansible
+      ansible-playbook -i inventory/hosts.yml playbooks/site.yml
       
-      # Для monitoring (192.168.56.12)
-      VBoxManage guestcontrol "monitoring" run --exe /bin/bash --username vagrant --password vagrant -- -c "sudo ip addr add 192.168.56.12/24 dev enp0s8 2>/dev/null || true" 2>/dev/null || true
-      
-      echo "Статические IP настроены"
+      echo "Настройка завершена!"
     EOT
   }
 }
