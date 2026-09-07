@@ -67,26 +67,22 @@ pipeline {
     
     post {
         success {
-            mail to: 'ark.sjm@gmail.com',
-                 subject: "✅ Build ${BUILD_NUMBER} successful - graduation_paper_B",
-                 body: """
-                    Build successful!
-                    Project: graduation_paper_B
-                    Build: #${BUILD_NUMBER}
-                    App: http://${APP_IP}
-                    Health: http://${APP_IP}/health
-                    Logs: ${BUILD_URL}
-                 """
+            script {
+                sh '''
+                    python3 /var/lib/jenkins/send_email.py \
+                        "✅ Build ${BUILD_NUMBER} successful - graduation_paper_B" \
+                        "Build successful!\n\nProject: graduation_paper_B\nBuild: #${BUILD_NUMBER}\nApp: http://${APP_IP}\nHealth: http://${APP_IP}/health\nLogs: ${BUILD_URL}"
+                '''
+            }
         }
         failure {
-            mail to: 'ark.sjm@gmail.com',
-                 subject: "❌ Build ${BUILD_NUMBER} failed - graduation_paper_B",
-                 body: """
-                    Build failed!
-                    Project: graduation_paper_B
-                    Build: #${BUILD_NUMBER}
-                    Logs: ${BUILD_URL}
-                 """
+            script {
+                sh '''
+                    python3 /var/lib/jenkins/send_email.py \
+                        "❌ Build ${BUILD_NUMBER} failed - graduation_paper_B" \
+                        "Build failed!\n\nProject: graduation_paper_B\nBuild: #${BUILD_NUMBER}\nLogs: ${BUILD_URL}"
+                '''
+            }
         }
     }
 }
