@@ -45,7 +45,6 @@ pipeline {
         }
         
         stage('Deploy via Ansible') {
-            when { branch 'main' }
             steps {
                 echo "Автоматический деплой через Ansible..."
                 script {
@@ -58,7 +57,6 @@ pipeline {
         }
         
         stage('Smoke Test') {
-            when { branch 'main' }
             steps {
                 sh 'sleep 10 && curl -f http://192.168.56.10/health || exit 1'
             }
