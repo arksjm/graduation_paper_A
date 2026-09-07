@@ -4,7 +4,6 @@ pipeline {
     environment {
         APP_IP = '192.168.56.10'
         DOCKER_IMAGE = 'graduation-app'
-        GMAIL_USER = credentials('gmail-user')
         GMAIL_PASSWORD = credentials('gmail-app-password')
     }
     
@@ -18,12 +17,9 @@ pipeline {
         
         stage('Lint') {
             steps {
-                echo "Проверка кода..."
                 sh '''
-                    cd app
-                    echo "=== gofmt ==="
+                    cd app || exit 1
                     gofmt -l . || true
-                    echo "=== go vet ==="
                     go vet ./... || true
                 '''
             }
@@ -31,9 +27,8 @@ pipeline {
         
         stage('Test') {
             steps {
-                echo "Запуск тестов..."
                 sh '''
-                    cd app
+                    cd app || exit 1
                     go test ./... -v || true
                 '''
             }
@@ -41,32 +36,27 @@ pipeline {
         
         stage('Build Docker Image') {
             steps {
-                echo "Сборка Docker образа..."
                 sh '''
                     cd app
                     docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} .
-                    docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest
                 '''
             }
         }
         
         stage('Publish Artifact') {
             steps {
-                echo "Публикация артефакта..."
                 sh '''
                     cd app
                     mkdir -p artifacts
                     docker save ${DOCKER_IMAGE}:${BUILD_NUMBER} | gzip > artifacts/${DOCKER_IMAGE}-${BUILD_NUMBER}.tar.gz
-                    ls -la artifacts/
                 '''
                 archiveArtifacts artifacts: 'app/artifacts/*.tar.gz'
             }
         }
         
-        stage('Deploy to App Server') {
+        stage('Deploy') {
             when { branch 'main' }
             steps {
-                echo "Деплой на app-сервер..."
                 sh '''
                     ssh vagrant@192.168.56.10 'mkdir -p ~/app'
                     scp -r app/* vagrant@192.168.56.10:~/app/
@@ -78,12 +68,7 @@ pipeline {
         stage('Smoke Test') {
             when { branch 'main' }
             steps {
-                echo "Проверка приложения..."
-                sh '''
-                    sleep 15
-                    curl -f http://192.168.56.10 || exit 1
-                    curl -f http://192.168.56.10/health || exit 1
-                '''
+                sh 'sleep 10 && curl -f http://192.168.56.10 || exit 1'
             }
         }
     }
@@ -96,12 +81,12 @@ pipeline {
 import smtplib, os
 from email.mime.text import MIMEText
 msg = MIMEText('Build successful!')
-msg['From'] = os.environ['GMAIL_USER']
-msg['To'] = os.environ['GMAIL_USER']
-msg['Subject'] = '✅ Build successful'
+msg['From'] = 'ark.sjm@gmail.com'
+msg['To'] = 'ark.sjm@gmail.com'
+msg['Subject'] = '✅ Build ${BUILD_NUMBER} successful'
 server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
-server.login(os.environ['GMAIL_USER'], os.environ['GMAIL_PASSWORD'])
-server.sendmail(os.environ['GMAIL_USER'], os.environ['GMAIL_USER'], msg.as_string())
+server.login('ark.sjm@gmail.com', os.environ['GMAIL_PASSWORD'])
+server.sendmail('ark.sjm@gmail.com', 'ark.sjm@gmail.com', msg.as_string())
 server.quit()
 "
                 '''
@@ -114,12 +99,12 @@ server.quit()
 import smtplib, os
 from email.mime.text import MIMEText
 msg = MIMEText('Build failed!')
-msg['From'] = os.environ['GMAIL_USER']
-msg['To'] = os.environ['GMAIL_USER']
-msg['Subject'] = '❌ Build failed'
+msg['From'] = 'ark.sjm@gmail.com'
+msg['To'] = 'ark.sjm@gmail.com'
+msg['Subject'] = '❌ Build ${BUILD_NUMBER} failed'
 server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
-server.login(os.environ['GMAIL_USER'], os.environ['GMAIL_PASSWORD'])
-server.sendmail(os.environ['GMAIL_USER'], os.environ['GMAIL_USER'], msg.as_string())
+server.login('ark.sjm@gmail.com', os.environ['GMAIL_PASSWORD'])
+server.sendmail('ark.sjm@gmail.com', 'ark.sjm@gmail.com', msg.as_string())
 server.quit()
 "
                 '''
