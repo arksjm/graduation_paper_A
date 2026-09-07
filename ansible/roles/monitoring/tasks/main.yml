@@ -12,17 +12,11 @@
       global:
         scrape_interval: 15s
         evaluation_interval: 15s
-        external_labels:
-          monitor: 'graduation-monitor'
 
       rule_files:
         - 'alerts.yml'
 
       scrape_configs:
-        - job_name: 'prometheus'
-          static_configs:
-            - targets: ['localhost:9090']
-
         - job_name: 'node_exporter'
           static_configs:
             - targets:
@@ -30,12 +24,11 @@
                 - '192.168.56.11:9100'
                 - '192.168.56.12:9100'
 
-        - job_name: 'go_app'
-          metrics_path: '/health'
+        - job_name: 'prometheus'
           static_configs:
-            - targets: ['192.168.56.10:8080']
+            - targets: ['localhost:9090']
 
-        - job_name: 'blackbox'
+        - job_name: 'blackbox_http'
           metrics_path: /probe
           params:
             module: [http_2xx]
@@ -49,24 +42,52 @@
             - source_labels: [__param_target]
               target_label: instance
             - target_label: __address__
-              replacement: localhost:9115
+              replacement: blackbox_exporter:9115
 
 - name: Создание правил алертов
   copy:
     dest: /opt/monitoring/alerts.yml
-    src: alerts.yml
-
-- name: Создание конфигурации Blackbox Exporter
-  copy:
-    dest: /opt/monitoring/blackbox.yml
     content: |
-      modules:
-        http_2xx:
-          prober: http
-          timeout: 5s
-          http:
-            valid_status_codes: [200, 301, 302]
-            method: GET
+      groups:
+        - name: infrastructure_alerts
+          rules:
+            - alert: HostDown
+              expr: up == 0
+              for: 1m
+              labels:
+                severity: critical
+              annotations:
+                summary: "Хост недоступен"
+                description: "Хост не отвечает более 1 минуты"
+
+            - alert: HighCPUUsage
+              expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+              for: 5m
+              labels:
+                severity: warning
+              annotations:
+                summary: "Высокая загрузка CPU"
+                description: "CPU используется более 80% в течение 5 минут"
+
+            - alert: LowMemory
+              expr: (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 < 10
+              for: 5m
+              labels:
+                severity: warning
+              annotations:
+                summary: "Мало памяти"
+                description: "Доступно менее 10% памяти"
+
+        - name: application_alerts
+          rules:
+            - alert: AppDown
+              expr: probe_success == 0
+              for: 2m
+              labels:
+                severity: critical
+              annotations:
+                summary: "Приложение недоступно"
+                description: "Приложение не отвечает более 2 минут"
 
 - name: Создание docker-compose для мониторинга
   copy:
@@ -81,12 +102,10 @@
             - ./prometheus.yml:/etc/prometheus/prometheus.yml
             - ./alerts.yml:/etc/prometheus/alerts.yml
             - prometheus_data:/prometheus
-          command:
-            - '--config.file=/etc/prometheus/prometheus.yml'
-            - '--storage.tsdb.path=/prometheus'
-            - '--web.enable-lifecycle'
           ports:
             - "9090:9090"
+          networks:
+            - monitoring
 
         grafana:
           image: grafana/grafana:latest
@@ -99,8 +118,8 @@
             - "3000:3000"
           volumes:
             - grafana_data:/var/lib/grafana
-          depends_on:
-            - prometheus
+          networks:
+            - monitoring
 
         blackbox_exporter:
           image: prom/blackbox-exporter:latest
@@ -108,18 +127,21 @@
           restart: always
           ports:
             - "9115:9115"
-          volumes:
-            - ./blackbox.yml:/etc/blackbox_exporter/config.yml
-          command:
-            - '--config.file=/etc/blackbox_exporter/config.yml'
+          networks:
+            - monitoring
+
+      networks:
+        monitoring:
+          driver: bridge
 
       volumes:
         prometheus_data:
         grafana_data:
 
-- name: Запуск мониторинга
+- name: Перезапуск мониторинга
   shell: |
     cd /opt/monitoring
+    docker compose down
     docker compose up -d
   args:
     executable: /bin/bash
