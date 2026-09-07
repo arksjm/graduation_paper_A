@@ -1,6 +1,10 @@
 pipeline {
     agent any
     
+    triggers {
+        githubPush()
+    }
+    
     environment {
         APP_IP = '192.168.56.10'
         DOCKER_IMAGE = 'graduation-app'
