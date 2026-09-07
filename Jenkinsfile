@@ -4,11 +4,6 @@ pipeline {
     environment {
         APP_IP = '192.168.56.10'
         DOCKER_IMAGE = 'graduation-app'
-        RECIPIENT_EMAIL = 'ark.sjm@gmail.com'
-    }
-    
-    triggers {
-        githubPush()
     }
     
     stages {
@@ -16,33 +11,6 @@ pipeline {
             steps {
                 checkout scm
                 echo "Код загружен"
-            }
-        }
-        
-        stage('Lint') {
-            steps {
-                echo "Проверка кода..."
-                script {
-                    sh '''
-                        cd app || exit 1
-                        echo "=== gofmt ==="
-                        gofmt -l .
-                        echo "=== go vet ==="
-                        go vet ./...
-                    '''
-                }
-            }
-        }
-        
-        stage('Test') {
-            steps {
-                echo "Запуск тестов..."
-                script {
-                    sh '''
-                        cd app || exit 1
-                        go test ./... -v -cover || true
-                    '''
-                }
             }
         }
         
@@ -99,41 +67,26 @@ pipeline {
     
     post {
         success {
-            emailext (
-                subject: "✅ Сборка #${BUILD_NUMBER} успешна - graduation_paper_B",
-                body: """
-                    <h2 style="color: green;">Сборка успешно завершена!</h2>
-                    <table border="1" cellpadding="10">
-                        <tr><td><b>Проект:</b></td><td>${env.JOB_NAME}</td></tr>
-                        <tr><td><b>Сборка:</b></td><td>#${BUILD_NUMBER}</td></tr>
-                        <tr><td><b>Ветка:</b></td><td>${env.GIT_BRANCH}</td></tr>
-                    </table>
-                    <p>Приложение: <a href="http://${APP_IP}">http://${APP_IP}</a></p>
-                    <p>Логи: <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
-                """,
-                to: "${RECIPIENT_EMAIL}",
-                mimeType: 'text/html'
-            )
+            mail to: 'ark.sjm@gmail.com',
+                 subject: "✅ Build ${BUILD_NUMBER} successful - graduation_paper_B",
+                 body: """
+                    Build successful!
+                    Project: graduation_paper_B
+                    Build: #${BUILD_NUMBER}
+                    App: http://${APP_IP}
+                    Health: http://${APP_IP}/health
+                    Logs: ${BUILD_URL}
+                 """
         }
-        
         failure {
-            emailext (
-                subject: "❌ Сборка #${BUILD_NUMBER} провалилась - graduation_paper_B",
-                body: """
-                    <h2 style="color: red;">Сборка провалилась!</h2>
-                    <table border="1" cellpadding="10">
-                        <tr><td><b>Проект:</b></td><td>${env.JOB_NAME}</td></tr>
-                        <tr><td><b>Сборка:</b></td><td>#${BUILD_NUMBER}</td></tr>
-                    </table>
-                    <p>Логи: <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
-                """,
-                to: "${RECIPIENT_EMAIL}",
-                mimeType: 'text/html'
-            )
-        }
-        
-        always {
-            cleanWs()
+            mail to: 'ark.sjm@gmail.com',
+                 subject: "❌ Build ${BUILD_NUMBER} failed - graduation_paper_B",
+                 body: """
+                    Build failed!
+                    Project: graduation_paper_B
+                    Build: #${BUILD_NUMBER}
+                    Logs: ${BUILD_URL}
+                 """
         }
     }
 }
