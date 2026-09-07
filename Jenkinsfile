@@ -44,14 +44,14 @@ pipeline {
             }
         }
         
-        stage('Deploy via Ansible') {
+        stage('Deploy via SSH') {
             steps {
-                echo "Автоматический деплой..."
+                echo "Автоматический деплой на app-сервер..."
                 script {
                     sh '''
-                        # Используем полный путь к ansible
-                        cd /home/admiq/graduation_paper_B/ansible
-                        ansible-playbook -i inventory/hosts.yml playbooks/site.yml --limit app
+                        ssh -o StrictHostKeyChecking=no vagrant@192.168.56.10 'mkdir -p ~/app'
+                        scp -o StrictHostKeyChecking=no -r app/* vagrant@192.168.56.10:~/app/
+                        ssh -o StrictHostKeyChecking=no vagrant@192.168.56.10 'cd ~/app && docker compose up -d --build'
                     '''
                 }
             }
