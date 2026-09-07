@@ -1,14 +1,67 @@
-.PHONY: up down bootstrap destroy clean download-images status
+.PHONY: help start stop up down restart bootstrap destroy clean download-images status check
 
-# Запуск существующей инфраструктуры
-up:
-	@echo "=== Запуск инфраструктуры ==="
-	./scripts/up.sh
+help:
+	@echo "Доступные команды:"
+	@echo "  make start    - Запуск ВМ и всех сервисов"
+	@echo "  make stop     - Остановка ВМ и сервисов"
+	@echo "  make up       - Запуск существующей инфраструктуры (алиас start)"
+	@echo "  make down     - Остановка инфраструктуры (алиас stop)"
+	@echo "  make restart  - Перезапуск инфраструктуры"
+	@echo "  make status   - Проверка статуса"
+	@echo "  make check    - Полная проверка системы"
+	@echo "  make bootstrap - Полное развёртывание с нуля"
+	@echo "  make destroy  - Удаление инфраструктуры"
+	@echo "  make clean    - Очистка временных файлов"
 
-# Остановка инфраструктуры
-down:
-	@echo "=== Остановка инфраструктуры ==="
-	./scripts/down.sh
+# Запуск ВМ и всех сервисов
+start:
+	@echo "=== Запуск виртуальных машин ==="
+	@VBoxManage startvm "app" --type headless 2>/dev/null || echo "app уже запущена"
+	@VBoxManage startvm "db" --type headless 2>/dev/null || echo "db уже запущена"
+	@VBoxManage startvm "monitoring" --type headless 2>/dev/null || echo "monitoring уже запущена"
+	@echo "Ожидание загрузки ВМ (60 секунд)..."
+	@sleep 60
+	@echo ""
+	@echo "=== Настройка сети ==="
+	@./scripts/setup_network.sh 2>/dev/null || echo "Сеть уже настроена"
+	@echo ""
+	@echo "=== Запуск Docker контейнеров ==="
+	@ssh vagrant@192.168.56.10 "cd ~/app && docker compose up -d" 2>/dev/null || echo "app: контейнеры уже запущены"
+	@ssh vagrant@192.168.56.11 "cd /opt/postgres && docker compose up -d" 2>/dev/null || echo "db: контейнеры уже запущены"
+	@ssh vagrant@192.168.56.12 "cd /opt/monitoring && docker compose up -d" 2>/dev/null || echo "monitoring: контейнеры уже запущены"
+	@echo ""
+	@echo "=== Проверка ==="
+	@./scripts/check_all.sh 2>/dev/null || true
+	@echo ""
+	@echo "=== Готово! ==="
+	@echo "App: http://192.168.56.10"
+	@echo "Prometheus: http://192.168.56.12:9090"
+	@echo "Grafana: http://192.168.56.12:3000 (admin/admin123)"
+
+# Остановка ВМ и сервисов
+stop:
+	@echo "=== Остановка Docker контейнеров ==="
+	@ssh vagrant@192.168.56.10 "cd ~/app && docker compose down" 2>/dev/null || echo "app: контейнеры остановлены"
+	@ssh vagrant@192.168.56.11 "cd /opt/postgres && docker compose down" 2>/dev/null || echo "db: контейнеры остановлены"
+	@ssh vagrant@192.168.56.12 "cd /opt/monitoring && docker compose down" 2>/dev/null || echo "monitoring: контейнеры остановлены"
+	@echo ""
+	@echo "=== Остановка ВМ ==="
+	@VBoxManage controlvm "app" acpipower 2>/dev/null || echo "app уже остановлена"
+	@VBoxManage controlvm "db" acpipower 2>/dev/null || echo "db уже остановлена"
+	@VBoxManage controlvm "monitoring" acpipower 2>/dev/null || echo "monitoring уже остановлена"
+	@echo "Все ВМ остановлены"
+
+# Алиасы
+up: start
+
+down: stop
+
+# Перезапуск
+restart:
+	@echo "=== Перезапуск ==="
+	@make stop
+	@sleep 10
+	@make start
 
 # Скачивание образов
 download-images:
@@ -43,30 +96,19 @@ clean:
 # Статус инфраструктуры
 status:
 	@echo "=== Статус ВМ ==="
-	VBoxManage list runningvms
+	@VBoxManage list runningvms
 	@echo ""
 	@echo "=== Статус контейнеров ==="
-	@echo "app:"
-	@ssh vagrant@192.168.56.10 "docker ps --format 'table {{.Names}}\t{{.Status}}'" 2>/dev/null || echo "  недоступен"
+	@echo "--- App (192.168.56.10) ---"
+	@ssh vagrant@192.168.56.10 "docker ps --format 'table {{.Names}}\t{{.Status}}'" 2>/dev/null || echo "Недоступна"
 	@echo ""
-	@echo "db:"
-	@ssh vagrant@192.168.56.11 "docker ps --format 'table {{.Names}}\t{{.Status}}'" 2>/dev/null || echo "  недоступен"
+	@echo "--- DB (192.168.56.11) ---"
+	@ssh vagrant@192.168.56.11 "docker ps --format 'table {{.Names}}\t{{.Status}}'" 2>/dev/null || echo "Недоступна"
 	@echo ""
-	@echo "monitoring:"
-	@ssh vagrant@192.168.56.12 "docker ps --format 'table {{.Names}}\t{{.Status}}'" 2>/dev/null || echo "  недоступен"
+	@echo "--- Monitoring (192.168.56.12) ---"
+	@ssh vagrant@192.168.56.12 "docker ps --format 'table {{.Names}}\t{{.Status}}'" 2>/dev/null || echo "Недоступна"
 
-# Проверка доступности
+# Полная проверка
 check:
-	@echo "=== Проверка доступности ==="
-	@for IP in 192.168.56.10 192.168.56.11 192.168.56.12; do \
-		if ping -c 1 -W 2 $$IP > /dev/null 2>&1; then \
-			echo "$$IP - доступен"; \
-		else \
-			echo "$$IP - недоступен"; \
-		fi; \
-	done
-	@echo ""
-	@echo "=== Проверка HTTP ==="
-	@curl -I http://192.168.56.10 2>/dev/null | head -1 || echo "App недоступен"
-	@curl -I http://192.168.56.12:3000 2>/dev/null | head -1 || echo "Grafana недоступен"
-	@curl -I http://192.168.56.12:9090 2>/dev/null | head -1 || echo "Prometheus недоступен"
+	@echo "=== Полная проверка системы ==="
+	@./scripts/check_all.sh 2>/dev/null || true
