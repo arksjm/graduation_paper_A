@@ -52,13 +52,14 @@ pipeline {
             steps {
                 script {
                     sh '''
+                        # Копируем роли
                         mkdir -p ${WORKSPACE}/ansible/roles
                         cp -r /home/admiq/graduation_paper_B/ansible/roles/* ${WORKSPACE}/ansible/roles/ 2>/dev/null || true
                         
-                        # Создаём симлинк для ролей
-                        mkdir -p ${WORKSPACE}/ansible/playbooks/roles
+                        # Создаём симлинк в playbooks (Ansible ищет роли здесь)
                         ln -sfn ${WORKSPACE}/ansible/roles ${WORKSPACE}/ansible/playbooks/roles
                         
+                        echo "Роли подготовлены:"
                         ls ${WORKSPACE}/ansible/playbooks/roles/
                     '''
                 }
@@ -72,7 +73,10 @@ pipeline {
                     sh '''
                         cd ${WORKSPACE}
                         ./scripts/generate_inventory.sh
-                        ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/site.yml --limit app --roles-path ansible/roles
+                        
+                        # Используем ANSIBLE_ROLES_PATH
+                        export ANSIBLE_ROLES_PATH=${WORKSPACE}/ansible/roles
+                        ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/site.yml --limit app
                     '''
                 }
             }
