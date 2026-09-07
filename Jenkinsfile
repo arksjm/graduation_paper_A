@@ -53,10 +53,10 @@ pipeline {
                 echo "Автоматический деплой через Ansible..."
                 script {
                     sh '''
-                        # Генерация inventory
+                        # Генерация inventory в workspace
                         ./scripts/generate_inventory.sh
                         
-                        # Запуск Ansible playbook для app
+                        # Деплой через Ansible (роли уже в workspace)
                         ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/site.yml --limit app
                     '''
                 }
