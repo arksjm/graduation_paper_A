@@ -3,105 +3,137 @@ pipeline {
     
     environment {
         APP_IP = '192.168.56.10'
-        DOCKER_REGISTRY = 'localhost:5000'  // Или Docker Hub
-        IMAGE_NAME = 'graduation-app'
+        DOCKER_IMAGE = 'graduation-app'
+        RECIPIENT_EMAIL = 'ark.sjm@gmail.com'
     }
     
-    parameters {
-        choice(
-            name: 'DEPLOY_VERSION',
-            choices: ['latest', 'rollback'],
-            description: 'Выберите версию для деплоя'
-        )
+    triggers {
+        githubPush()
     }
     
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
+                echo "Код загружен"
             }
         }
         
-        stage('Build') {
-            when {
-                expression { params.DEPLOY_VERSION == 'latest' }
+        stage('Lint') {
+            steps {
+                echo "Проверка кода..."
+                script {
+                    sh '''
+                        cd app || exit 1
+                        echo "=== gofmt ==="
+                        gofmt -l .
+                        echo "=== go vet ==="
+                        go vet ./...
+                    '''
+                }
             }
+        }
+        
+        stage('Test') {
+            steps {
+                echo "Запуск тестов..."
+                script {
+                    sh '''
+                        cd app || exit 1
+                        go test ./... -v -cover || true
+                    '''
+                }
+            }
+        }
+        
+        stage('Build Docker Image') {
             steps {
                 echo "Сборка Docker образа..."
                 script {
-                    sh """
+                    sh '''
                         cd app
-                        docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} .
-                        docker tag ${IMAGE_NAME}:${BUILD_NUMBER} ${IMAGE_NAME}:latest
-                        docker tag ${IMAGE_NAME}:${BUILD_NUMBER} ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER}
-                        docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER}
-                        docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
-                    """
+                        docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} .
+                        docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest
+                    '''
                 }
             }
         }
         
-        stage('Deploy') {
+        stage('Deploy to App Server') {
+            when {
+                branch 'main'
+            }
             steps {
-                echo "Деплой версии ${BUILD_NUMBER}..."
+                echo "Деплой на app-сервер..."
                 script {
-                    def deployVersion = params.DEPLOY_VERSION == 'rollback' ? 'previous' : BUILD_NUMBER
-                    
-                    sh """
+                    sh '''
                         ssh -o StrictHostKeyChecking=no vagrant@${APP_IP} 'mkdir -p ~/app'
                         scp -o StrictHostKeyChecking=no -r app/* vagrant@${APP_IP}:~/app/
-                        
-                        # Создание docker-compose с версионированным образом
-                        ssh -o StrictHostKeyChecking=no vagrant@${APP_IP} "
-                            cd ~/app
-                            
-                            # Сохраняем текущую версию перед обновлением
-                            if [ -f current_version.txt ]; then
-                                cp current_version.txt previous_version.txt
-                            fi
-                            
-                            # Обновляем docker-compose.yml с новой версией
-                            sed -i 's|image:.*|image: ${DOCKER_REGISTRY}/${IMAGE_NAME}:${deployVersion}|' docker-compose.yml
-                            
-                            # Запускаем новую версию
-                            docker compose up -d --no-deps web
-                            
-                            # Сохраняем текущую версию
-                            echo '${deployVersion}' > current_version.txt
-                        "
-                    """
+                        ssh -o StrictHostKeyChecking=no vagrant@${APP_IP} 'cd ~/app && docker compose up -d --build'
+                    '''
                 }
             }
         }
         
-        stage('Health Check') {
+        stage('Smoke Test') {
+            when {
+                branch 'main'
+            }
             steps {
-                echo "Проверка новой версии..."
-                sh """
-                    sleep 15
-                    HTTP_CODE=\$(curl -s -o /dev/null -w "%{http_code}" http://${APP_IP}/)
-                    if [ "\$HTTP_CODE" != "200" ]; then
-                        echo "❌ Health check failed. Rolling back..."
-                        ssh vagrant@${APP_IP} 'cd ~/app && docker compose up -d --no-deps web'
-                        exit 1
-                    fi
-                    echo "✅ Приложение работает"
-                """
+                echo "Проверка приложения..."
+                script {
+                    sh '''
+                        sleep 15
+                        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://${APP_IP}/)
+                        if [ "$HTTP_CODE" = "200" ]; then
+                            echo "✅ Приложение работает"
+                        else
+                            echo "❌ Приложение не отвечает: $HTTP_CODE"
+                            exit 1
+                        fi
+                    '''
+                }
             }
         }
     }
     
     post {
         success {
-            echo "✅ Деплой успешен! Версия: ${BUILD_NUMBER}"
+            emailext (
+                subject: "✅ Сборка #${BUILD_NUMBER} успешна - graduation_paper_B",
+                body: """
+                    <h2 style="color: green;">Сборка успешно завершена!</h2>
+                    <table border="1" cellpadding="10">
+                        <tr><td><b>Проект:</b></td><td>${env.JOB_NAME}</td></tr>
+                        <tr><td><b>Сборка:</b></td><td>#${BUILD_NUMBER}</td></tr>
+                        <tr><td><b>Ветка:</b></td><td>${env.GIT_BRANCH}</td></tr>
+                    </table>
+                    <p>Приложение: <a href="http://${APP_IP}">http://${APP_IP}</a></p>
+                    <p>Логи: <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+                """,
+                to: "${RECIPIENT_EMAIL}",
+                mimeType: 'text/html'
+            )
         }
+        
         failure {
-            echo "❌ Деплой провалился! Автоматический откат..."
-            script {
-                sh """
-                    ssh vagrant@${APP_IP} 'cd ~/app && docker compose up -d --no-deps web'
-                """
-            }
+            emailext (
+                subject: "❌ Сборка #${BUILD_NUMBER} провалилась - graduation_paper_B",
+                body: """
+                    <h2 style="color: red;">Сборка провалилась!</h2>
+                    <table border="1" cellpadding="10">
+                        <tr><td><b>Проект:</b></td><td>${env.JOB_NAME}</td></tr>
+                        <tr><td><b>Сборка:</b></td><td>#${BUILD_NUMBER}</td></tr>
+                    </table>
+                    <p>Логи: <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+                """,
+                to: "${RECIPIENT_EMAIL}",
+                mimeType: 'text/html'
+            )
+        }
+        
+        always {
+            cleanWs()
         }
     }
 }
