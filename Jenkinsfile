@@ -48,15 +48,29 @@ pipeline {
             }
         }
 
-        stage('Deploy via Ansible') {
+        stage('Prepare Ansible') {
             steps {
-                echo "Автоматический деплой через Ansible..."
+                echo "Подготовка Ansible ролей..."
                 script {
                     sh '''
-                        # Генерация inventory в workspace
-                        ./scripts/generate_inventory.sh
+                        # Копируем роли из локальной директории
+                        mkdir -p ${WORKSPACE}/ansible/roles
+                        cp -r /home/admiq/graduation_paper_B/ansible/roles/* ${WORKSPACE}/ansible/roles/ 2>/dev/null || true
                         
-                        # Деплой через Ansible (роли уже в workspace)
+                        # Проверяем
+                        ls ${WORKSPACE}/ansible/roles/
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy via Ansible') {
+            steps {
+                echo "Деплой через Ansible..."
+                script {
+                    sh '''
+                        cd ${WORKSPACE}
+                        ./scripts/generate_inventory.sh
                         ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/site.yml --limit app
                     '''
                 }
