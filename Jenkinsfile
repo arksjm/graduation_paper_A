@@ -11,35 +11,25 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
-                echo "Код загружен"
             }
         }
         
         stage('Lint') {
             steps {
-                sh '''
-                    cd app || exit 1
-                    gofmt -l . || true
-                    go vet ./... || true
-                '''
+                sh 'cd app && gofmt -l . || true'
+                sh 'cd app && go vet ./... || true'
             }
         }
         
         stage('Test') {
             steps {
-                sh '''
-                    cd app || exit 1
-                    go test ./... -v || true
-                '''
+                sh 'cd app && go test ./... -v || true'
             }
         }
         
         stage('Build Docker Image') {
             steps {
-                sh '''
-                    cd app
-                    docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} .
-                '''
+                sh 'cd app && docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} .'
             }
         }
         
@@ -54,21 +44,23 @@ pipeline {
             }
         }
         
-        stage('Deploy') {
+        stage('Deploy via Ansible') {
             when { branch 'main' }
             steps {
-                sh '''
-                    ssh vagrant@192.168.56.10 'mkdir -p ~/app'
-                    scp -r app/* vagrant@192.168.56.10:~/app/
-                    ssh vagrant@192.168.56.10 'cd ~/app && docker compose up -d --build'
-                '''
+                echo "Автоматический деплой через Ansible..."
+                script {
+                    sh '''
+                        cd ansible
+                        ansible-playbook -i inventory/hosts.yml playbooks/site.yml --limit app
+                    '''
+                }
             }
         }
         
         stage('Smoke Test') {
             when { branch 'main' }
             steps {
-                sh 'sleep 10 && curl -f http://192.168.56.10 || exit 1'
+                sh 'sleep 10 && curl -f http://192.168.56.10/health || exit 1'
             }
         }
     }
@@ -80,10 +72,10 @@ pipeline {
                     python3 -c "
 import smtplib, os
 from email.mime.text import MIMEText
-msg = MIMEText('Build successful!')
+msg = MIMEText('Build and deploy successful!')
 msg['From'] = 'ark.sjm@gmail.com'
 msg['To'] = 'ark.sjm@gmail.com'
-msg['Subject'] = '✅ Build ${BUILD_NUMBER} successful'
+msg['Subject'] = '✅ Build + Deploy ${BUILD_NUMBER} successful'
 server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
 server.login('ark.sjm@gmail.com', os.environ['GMAIL_PASSWORD'])
 server.sendmail('ark.sjm@gmail.com', 'ark.sjm@gmail.com', msg.as_string())
@@ -98,10 +90,10 @@ server.quit()
                     python3 -c "
 import smtplib, os
 from email.mime.text import MIMEText
-msg = MIMEText('Build failed!')
+msg = MIMEText('Build or deploy failed!')
 msg['From'] = 'ark.sjm@gmail.com'
 msg['To'] = 'ark.sjm@gmail.com'
-msg['Subject'] = '❌ Build ${BUILD_NUMBER} failed'
+msg['Subject'] = '❌ Build #${BUILD_NUMBER} failed'
 server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
 server.login('ark.sjm@gmail.com', os.environ['GMAIL_PASSWORD'])
 server.sendmail('ark.sjm@gmail.com', 'ark.sjm@gmail.com', msg.as_string())
