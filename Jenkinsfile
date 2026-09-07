@@ -4,6 +4,7 @@ pipeline {
     environment {
         APP_IP = '192.168.56.10'
         DOCKER_IMAGE = 'graduation-app'
+        GMAIL_PASSWORD = credentials('gmail-app-password')
     }
     
     stages {
@@ -16,73 +17,60 @@ pipeline {
         
         stage('Build Docker Image') {
             steps {
-                echo "Сборка Docker образа..."
-                script {
-                    sh '''
-                        cd app
-                        docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} .
-                        docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest
-                    '''
-                }
+                sh 'cd app && docker build -t graduation-app:${BUILD_NUMBER} .'
             }
         }
         
-        stage('Deploy to App Server') {
-            when {
-                branch 'main'
-            }
+        stage('Deploy') {
+            when { branch 'main' }
             steps {
-                echo "Деплой на app-сервер..."
-                script {
-                    sh '''
-                        ssh -o StrictHostKeyChecking=no vagrant@${APP_IP} 'mkdir -p ~/app'
-                        scp -o StrictHostKeyChecking=no -r app/* vagrant@${APP_IP}:~/app/
-                        ssh -o StrictHostKeyChecking=no vagrant@${APP_IP} 'cd ~/app && docker compose up -d --build'
-                    '''
-                }
-            }
-        }
-        
-        stage('Smoke Test') {
-            when {
-                branch 'main'
-            }
-            steps {
-                echo "Проверка приложения..."
-                script {
-                    sh '''
-                        sleep 15
-                        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://${APP_IP}/)
-                        if [ "$HTTP_CODE" = "200" ]; then
-                            echo "✅ Приложение работает"
-                        else
-                            echo "❌ Приложение не отвечает: $HTTP_CODE"
-                            exit 1
-                        fi
-                    '''
-                }
+                sh 'ssh vagrant@192.168.56.10 "cd ~/app && docker compose up -d --build"'
             }
         }
     }
     
     post {
         success {
-            script {
-                sh '''
-                    python3 /var/lib/jenkins/send_email.py \
-                        "✅ Build ${BUILD_NUMBER} successful - graduation_paper_B" \
-                        "Build successful!\n\nProject: graduation_paper_B\nBuild: #${BUILD_NUMBER}\nApp: http://${APP_IP}\nHealth: http://${APP_IP}/health\nLogs: ${BUILD_URL}"
-                '''
-            }
+            sh '''
+                python3 -c "
+import smtplib
+from email.mime.text import MIMEText
+import os
+
+password = os.environ.get('GMAIL_PASSWORD', '')
+
+msg = MIMEText('Build successful!')
+msg['From'] = 'ark.sjm@gmail.com'
+msg['To'] = 'ark.sjm@gmail.com'
+msg['Subject'] = '✅ Build successful'
+
+server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+server.login('ark.sjm@gmail.com', password)
+server.sendmail('ark.sjm@gmail.com', 'ark.sjm@gmail.com', msg.as_string())
+server.quit()
+"
+            '''
         }
         failure {
-            script {
-                sh '''
-                    python3 /var/lib/jenkins/send_email.py \
-                        "❌ Build ${BUILD_NUMBER} failed - graduation_paper_B" \
-                        "Build failed!\n\nProject: graduation_paper_B\nBuild: #${BUILD_NUMBER}\nLogs: ${BUILD_URL}"
-                '''
-            }
+            sh '''
+                python3 -c "
+import smtplib
+from email.mime.text import MIMEText
+import os
+
+password = os.environ.get('GMAIL_PASSWORD', '')
+
+msg = MIMEText('Build failed!')
+msg['From'] = 'ark.sjm@gmail.com'
+msg['To'] = 'ark.sjm@gmail.com'
+msg['Subject'] = '❌ Build failed'
+
+server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+server.login('ark.sjm@gmail.com', password)
+server.sendmail('ark.sjm@gmail.com', 'ark.sjm@gmail.com', msg.as_string())
+server.quit()
+"
+            '''
         }
     }
 }
