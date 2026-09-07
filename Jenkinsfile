@@ -50,15 +50,16 @@ pipeline {
 
         stage('Prepare Ansible') {
             steps {
-                echo "Подготовка Ansible ролей..."
                 script {
                     sh '''
-                        # Копируем роли из локальной директории
                         mkdir -p ${WORKSPACE}/ansible/roles
                         cp -r /home/admiq/graduation_paper_B/ansible/roles/* ${WORKSPACE}/ansible/roles/ 2>/dev/null || true
                         
-                        # Проверяем
-                        ls ${WORKSPACE}/ansible/roles/
+                        # Создаём симлинк для ролей
+                        mkdir -p ${WORKSPACE}/ansible/playbooks/roles
+                        ln -sfn ${WORKSPACE}/ansible/roles ${WORKSPACE}/ansible/playbooks/roles
+                        
+                        ls ${WORKSPACE}/ansible/playbooks/roles/
                     '''
                 }
             }
@@ -71,7 +72,7 @@ pipeline {
                     sh '''
                         cd ${WORKSPACE}
                         ./scripts/generate_inventory.sh
-                        ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/site.yml --limit app
+                        ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/site.yml --limit app --roles-path ansible/roles
                     '''
                 }
             }
